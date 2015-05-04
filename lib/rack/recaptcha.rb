@@ -1,13 +1,13 @@
 require  File.expand_path '../recaptcha/helpers', __FILE__
 require 'net/http'
+require 'json'
 
 module Rack
   class Recaptcha
-    API_URL         = 'http://www.google.com/recaptcha/api'
-    API_SECURE_URL  = 'https://www.google.com/recaptcha/api'
-    VERIFY_URL      = 'http://www.google.com/recaptcha/api/verify'
-    CHALLENGE_FIELD = 'recaptcha_challenge_field'
-    RESPONSE_FIELD  = 'recaptcha_response_field'
+    API_URL         = 'http://www.google.com/recaptcha/api.js'
+    API_SECURE_URL  = 'https://www.google.com/recaptcha/api.js'
+    VERIFY_URL      = 'https://www.google.com/recaptcha/api/siteverify'
+    RESPONSE_FIELD  = 'g-recaptcha-response'
 
     class << self
       attr_accessor :private_key, :public_key, :test_mode, :proxy_host, :proxy_port, :proxy_user, :proxy_password
@@ -39,42 +39,43 @@ module Rack
 
     def _call(env)
       request = Request.new(env)
-      if request.params[CHALLENGE_FIELD] and request.params[RESPONSE_FIELD]
+      if request.params[RESPONSE_FIELD]
         value, msg = verify(
           request.ip,
-          request.params[CHALLENGE_FIELD],
           request.params[RESPONSE_FIELD]
         )
-        env.merge!('recaptcha.valid' => value == 'true', 'recaptcha.msg' => msg)
+        env.merge!('recaptcha.valid' => value, 'recaptcha.msg' => msg)
       end
       @app.call(env)
     end
 
-    def verify(ip, challenge, response)
+    def verify(ip, response)
       params = {
-        'privatekey' => Rack::Recaptcha.private_key,
+        'secret' => Rack::Recaptcha.private_key,
         'remoteip'   => ip,
-        'challenge'  => challenge,
         'response'   => response
       }
 
       uri  = URI.parse(VERIFY_URL)
-   
+
 
       if self.class.proxy_host && self.class.proxy_port
         http = Net::HTTP.Proxy(self.class.proxy_host,
                                self.class.proxy_port,
                                self.class.proxy_user,
-                               self.class.proxy_password).start(uri.host, uri.port)
+                               self.class.proxy_password).start(uri.host, uri.port, :use_ssl => true)
       else
-        http = Net::HTTP.start(uri.host, uri.port)
+        http = Net::HTTP.start(uri.host, uri.port, :use_ssl => true)
       end
 
       request           = Net::HTTP::Post.new(uri.path)
       request.form_data = params
       response          = http.request(request)
 
-      response.body.split("\n")
+      parsed_response = JSON.parse(response.body)
+      success = parsed_response['success']
+      error_messages = parsed_response['error-codes'] || []
+      return [success, error_messages.join(',')]
     end
 
   end

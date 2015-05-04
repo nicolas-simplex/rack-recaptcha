@@ -18,15 +18,14 @@ describe Rack::Recaptcha do
   end
 
   it "should hit the login and pass" do
-    FakeWeb.register_uri(:post, Rack::Recaptcha::VERIFY_URL, :body => "true\nsuccess")
-    post("/login", 'recaptcha_challenge_field' => 'challenge', 'recaptcha_response_field' => 'response')
+    FakeWeb.register_uri(:post, Rack::Recaptcha::VERIFY_URL, :body => '{"success":true}')
+    post("/login", 'g-recaptcha-response' => 'response')
     assert_equal 'post login', last_response.body
   end
 
   it "should hit the login and fail" do
-    FakeWeb.register_uri(:post, Rack::Recaptcha::VERIFY_URL, :body => "false\nfailed")
-    post("/login", 'recaptcha_challenge_field' => 'challenge', 'recaptcha_response_field' => 'response')
+    FakeWeb.register_uri(:post, Rack::Recaptcha::VERIFY_URL, :body => '{"success":false,"error-codes":["invalid-input-response"]}')
+    post("/login", 'g-recaptcha-response' => 'response')
     assert_equal 'post fail', last_response.body
   end
 end
-
